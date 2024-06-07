@@ -9,6 +9,7 @@ import Language.Nano.Parser
 import qualified Data.List as L
 import           Text.Printf (printf)  
 import           Control.Exception (throw)
+import Foreign (free)
 
 --------------------------------------------------------------------------------
 typeOfFile :: FilePath -> IO Type
@@ -78,7 +79,11 @@ class Substitutable a where
 -- | Apply substitution to type
 instance Substitutable Type where  
   apply :: Subst -> Type -> Type
-  apply sub t         = error "TBD: type apply"
+  apply _ TInt = TInt
+  apply _ TBool = TBool
+  apply sub (TVar v) = lookupTVar v sub
+  apply sub (TList t) = TList (apply sub t)
+  apply sub (e1 :=> e2) = apply sub e1 :=> apply sub e2
 
 -- | Apply substitution to poly-type
 instance Substitutable Poly where    
