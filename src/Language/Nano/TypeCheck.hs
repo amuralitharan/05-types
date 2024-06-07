@@ -88,7 +88,10 @@ instance Substitutable Type where
 -- | Apply substitution to poly-type
 instance Substitutable Poly where    
   apply :: Subst -> Poly -> Poly
-  apply sub s         = error "TBD: poly apply"
+  apply sub (Mono t) = Mono (apply sub t)
+  apply sub (Forall vars t) = Forall vars (apply sub' t)
+    where
+      sub' = foldr removeTVar sub [vars]
 
 -- | Apply substitution to (all poly-types in) another substitution
 instance Substitutable Subst where  
