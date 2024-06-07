@@ -34,12 +34,17 @@ class HasTVars a where
 -- | Type variables of a type
 instance HasTVars Type where
   freeTVars :: Type -> [TId]
-  freeTVars t     = error "TBD: type freeTVars"
+  freeTVars TInt = []
+  freeTVars TBool = []
+  freeTVars (TVar a) = [a]
+  freeTVars (TList l) = freeTVars l
+  freeTVars (e1 :=> e2) = freeTVars e1 `L.union` freeTVars e2
 
 -- | Free type variables of a poly-type (remove forall-bound vars)
 instance HasTVars Poly where
   freeTVars :: Poly -> [TId]
-  freeTVars s     = error "TBD: poly freeTVars"
+  freeTVars (Mono t) = freeTVars t
+  freeTVars (Forall v e) = L.delete v (freeTVars e)
 
 -- | Free type variables of a type environment
 instance HasTVars TypeEnv where
