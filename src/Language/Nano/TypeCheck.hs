@@ -109,8 +109,10 @@ instance Substitutable TypeEnv where
       
 -- | Extend substitution with a new type assignment
 extendSubst :: Subst -> TId -> Type -> Subst
-extendSubst sub a t = error "TBD: extendSubst"
-      
+extendSubst sub a t = (a, t') : sub'
+  where
+    t' = apply sub t
+    sub' = map (\(x, y) -> (x, apply [(a, t')] y)) sub
 --------------------------------------------------------------------------------
 -- Problem 2: Unification
 --------------------------------------------------------------------------------
