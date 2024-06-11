@@ -136,13 +136,24 @@ extendState (InferState sub n) a t = InferState (extendSubst sub a t) n
 -- | Unify a type variable with a type; 
 --   if successful return an updated state, otherwise throw an error
 unifyTVar :: InferState -> TId -> Type -> InferState
-unifyTVar st a t = error "TBD: unifyTVar"
+unifyTVar st a t
+  | TVar a == t = st
+  | a `elem` freeTVars t = throw (Error ("type error: cannot unify " ++ a ++ " and " ++ show t ++ " (occurs check)"))
+  | otherwise = extendState st a t
     
 -- | Unify two types;
 --   if successful return an updated state, otherwise throw an error
 unify :: InferState -> Type -> Type -> InferState
-unify st t1 t2 = error "TBD: unify"
-
+unify st TInt TInt = st
+unify st TBool TBool = st
+unify st (TVar v) t = unifyTVar st v t
+unify st t (TVar v) = unifyTVar st v t
+unify st (t1 :=> t2) (t1' :=> t2') = st''
+  where
+    st' = unify st t1 t1'
+    st'' = unify st' (apply (stSub st') t2) (apply (stSub st') t2')
+unify st (TList t1) (TList t2) = unify st t1 t2
+unify _ t1 t2 = throw (Error ("type error: cannot unify " ++ show t1 ++ " and " ++ show t2))
 --------------------------------------------------------------------------------
 -- Problem 3: Type Inference
 --------------------------------------------------------------------------------    
