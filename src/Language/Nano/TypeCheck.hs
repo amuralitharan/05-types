@@ -154,30 +154,98 @@ unify st (t1 :=> t2) (t1' :=> t2') = st''
     st'' = unify st' (apply (stSub st') t2) (apply (stSub st') t2')
 unify st (TList t1) (TList t2) = unify st t1 t2
 unify _ t1 t2 = throw (Error ("type error: cannot unify " ++ show t1 ++ " and " ++ show t2))
+
 --------------------------------------------------------------------------------
 -- Problem 3: Type Inference
 --------------------------------------------------------------------------------    
   
 infer :: InferState -> TypeEnv -> Expr -> (InferState, Type)
-infer st _   (EInt _)          = error "TBD: infer EInt"
-infer st _   (EBool _)         = error "TBD: infer EBool"
-infer st gamma (EVar x)        = error "TBD: infer EVar"
-infer st gamma (ELam x body)   = error "TBD: infer ELam"
-infer st gamma (EApp e1 e2)    = error "TBD: infer EApp"
-infer st gamma (ELet x e1 e2)  = error "TBD: infer ELet"
-infer st gamma (EBin op e1 e2) = infer st gamma asApp
-  where
-    asApp = EApp (EApp opVar e1) e2
-    opVar = EVar (show op)
-infer st gamma (EIf c e1 e2) = infer st gamma asApp
-  where
-    asApp = EApp (EApp (EApp ifVar c) e1) e2
-    ifVar = EVar "if"    
-infer st gamma ENil = infer st gamma (EVar "[]")
+infer st _ (EInt _) = (st, TInt)
+infer st _ (EBool _) = (st, TBool)
+infer st _ ENil =
+  let tv = freshTV (stCnt st)
+  in (st { stCnt = stCnt st + 1 }, TList tv)
+infer st gamma (EVar x) =
+  let poly = lookupVarType x gamma
+      (n, t) = instantiate (stCnt st) poly
+  in (st { stCnt = n }, t)
+infer st gamma (ELam x body) =
+  let tv = freshTV (stCnt st)
+      st' = st { stCnt = stCnt st + 1 }
+      gamma' = extendTypeEnv x (Mono tv) gamma
+      (st'', tBody) = infer st' gamma' body
+      tLam = apply (stSub st'') (tv :=> tBody)
+  in (st'', tLam)
+infer st gamma (EApp e1 e2) =
+  let (st1, t1) = infer st gamma e1
+      (st2, t2) = infer st1 gamma e2
+      tv = freshTV (stCnt st2)
+      st3 = st2 { stCnt = stCnt st2 + 1 }
+      st4 = unify st3 t1 (t2 :=> tv)
+  in (st4, apply (stSub st4) tv)
+infer st gamma (ELet x e1 e2) =
+  let tv = freshTV (stCnt st)
+      st' = st { stCnt = stCnt st + 1 }
+      gamma' = extendTypeEnv x (Mono tv) gamma
+      (st1, t1) = infer st' gamma' e1
+      st2 = unify st1 tv t1 -- Unify the assumed type with the inferred type
+      t1' = apply (stSub st2) t1
+      poly = generalize (apply (stSub st2) gamma) t1'
+      gamma'' = extendTypeEnv x poly gamma
+      (st3, t2) = infer st2 gamma'' e2
+  in (st3, t2)
+infer st gamma (EBin op e1 e2) =
+  let (st1, t1) = infer st gamma e1
+      (st2, t2) = infer st1 gamma e2
+      (st3, ty) = case op of
+                    Plus  -> let st3 = unify st2 t1 TInt
+                                 st4 = unify st3 t2 TInt
+                             in (st4, TInt)
+                    Minus -> let st3 = unify st2 t1 TInt
+                                 st4 = unify st3 t2 TInt
+                             in (st4, TInt)
+                    Mul   -> let st3 = unify st2 t1 TInt
+                                 st4 = unify st3 t2 TInt
+                             in (st4, TInt)
+                    Div   -> let st3 = unify st2 t1 TInt
+                                 st4 = unify st3 t2 TInt
+                             in (st4, TInt)
+                    Eq    -> let st3 = unify st2 t1 t2
+                             in (st3, TBool)
+                    Ne    -> let st3 = unify st2 t1 t2
+                             in (st3, TBool)
+                    Lt    -> let st3 = unify st2 t1 TInt
+                                 st4 = unify st3 t2 TInt
+                             in (st4, TBool)
+                    Le    -> let st3 = unify st2 t1 TInt
+                                 st4 = unify st3 t2 TInt
+                             in (st4, TBool)
+                    And   -> let st3 = unify st2 t1 TBool
+                                 st4 = unify st3 t2 TBool
+                             in (st4, TBool)
+                    Or    -> let st3 = unify st2 t1 TBool
+                                 st4 = unify st3 t2 TBool
+                             in (st4, TBool)
+                    Cons  -> let tv = freshTV (stCnt st2)
+                                 st3 = unify st2 t2 (TList tv)
+                                 st4 = unify st3 t1 tv
+                             in (st4, TList tv)
+  in (st3, ty)
+infer st gamma (EIf e1 e2 e3) =
+  let (st1, t1) = infer st gamma e1
+      (st2, t2) = infer st1 gamma e2
+      (st3, t3) = infer st2 gamma e3
+      st4 = unify st3 t1 TBool
+      st5 = unify st4 t2 t3
+  in (st5, apply (stSub st5) t2)
 
 -- | Generalize type variables inside a type
 generalize :: TypeEnv -> Type -> Poly
-generalize gamma t = error "TBD: generalize"
+generalize gamma t =
+  let envTVars = freeTVars gamma
+      typeTVars = freeTVars t
+      newTVars = typeTVars L.\\ envTVars
+  in foldr Forall (Mono t) newTVars
     
 -- | Instantiate a polymorphic type into a mono-type with fresh type variables
 instantiate :: Int -> Poly -> (Int, Type)
@@ -191,19 +259,18 @@ instantiate n s = helper n [] s
 preludeTypes :: TypeEnv
 preludeTypes =
   [ ("+",    Mono (TInt :=> TInt :=> TInt))
-  , ("-",    error "TBD: -")
-  , ("*",    error "TBD: *")
-  , ("/",    error "TBD: /")
-  , ("==",   error "TBD: ==")
-  , ("!=",   error "TBD: !=")
-  , ("<",    error "TBD: <")
-  , ("<=",   error "TBD: <=")
-  , ("&&",   error "TBD: &&")
-  , ("||",   error "TBD: ||")
-  , ("if",   error "TBD: if")
-  -- lists: 
-  , ("[]",   error "TBD: []")
-  , (":",    error "TBD: :")
-  , ("head", error "TBD: head")
-  , ("tail", error "TBD: tail")
+  , ("-",    Mono (TInt :=> TInt :=> TInt))
+  , ("*",    Mono (TInt :=> TInt :=> TInt))
+  , ("/",    Mono (TInt :=> TInt :=> TInt))
+  , ("==",   Mono (TInt :=> TInt :=> TBool))
+  , ("!=",   Mono (TInt :=> TInt :=> TBool))
+  , ("<",    Mono (TInt :=> TInt :=> TBool))
+  , ("<=",   Mono (TInt :=> TInt :=> TBool))
+  , ("&&",   Mono (TBool :=> TBool :=> TBool))
+  , ("||",   Mono (TBool :=> TBool :=> TBool))
+  , ("if",   Forall "a" (Mono (TBool :=> TVar "a" :=> TVar "a" :=> TVar "a")))
+  , ("[]",   Forall "a" (Mono (TList (TVar "a"))))
+  , (":",    Forall "a" (Mono (TVar "a" :=> TList (TVar "a") :=> TList (TVar "a"))))
+  , ("head", Forall "a" (Mono (TList (TVar "a") :=> TVar "a")))
+  , ("tail", Forall "a" (Mono (TList (TVar "a") :=> TList (TVar "a"))))
   ]
